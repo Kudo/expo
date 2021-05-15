@@ -80,7 +80,8 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
-          target: playstore
+          target: google_apis
+          cores: 4
           profile: pixel_4
           arch: x86_64
           avd-name: bare-expo
