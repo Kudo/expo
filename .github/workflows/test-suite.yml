@@ -81,11 +81,11 @@ jobs:
         with:
           api-level: 29
           target: google_apis
-          cores: 4
+          cores: 2
           profile: pixel_4
           arch: x86_64
           avd-name: bare-expo
-          script: yarn android:detox:test:release
+          script: adb logcat -d > apps/bare-expo/artifacts/adblog1.log ; yarn android:detox:test:release
           working-directory: ./apps/bare-expo
       - name: Store images of build failures
         if: always()
