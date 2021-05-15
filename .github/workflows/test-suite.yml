@@ -32,7 +32,7 @@ jobs:
           submodules: true
       - name: 🍺 Install required tools
         run: |
-          brew install watchman
+          sudo apt-get install libpulse0
           echo "$(pwd)/bin" >> $GITHUB_PATH
       - name: ♻️ Restore workspace node modules
         uses: actions/cache@v2
