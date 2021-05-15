@@ -82,7 +82,7 @@ jobs:
           api-level: 25
           target: google_apis
           cores: 2
-          arch: x86_64
+          arch: x86
           avd-name: bare-expo
           script: mkdir artifacts ; adb logcat -d > artifacts/adblog1.log ; yarn android:detox:test:release
           working-directory: ./apps/bare-expo
