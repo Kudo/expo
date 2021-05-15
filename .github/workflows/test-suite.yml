@@ -32,6 +32,7 @@ jobs:
           submodules: true
       - name: 🍺 Install required tools
         run: |
+          brew install watchman
           sudo apt-get install libpulse0
           echo "$(pwd)/bin" >> $GITHUB_PATH
       - name: ♻️ Restore workspace node modules
@@ -78,8 +79,9 @@ jobs:
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 28
-          target: google_apis
+          api-level: 29
+          target: playstore
+          profile: pixel_4
           arch: x86_64
           avd-name: bare-expo
           script: yarn android:detox:test:release
