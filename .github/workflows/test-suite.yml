@@ -63,6 +63,7 @@ jobs:
         run: yarn detox:clean
         working-directory: apps/bare-expo
       - name: Cache build
+        id: cache-build
         uses: actions/cache@v2
         with:
           path: |
@@ -70,6 +71,7 @@ jobs:
             apps/bare-expo/android/app/build
           key: ${{ runner.os }}-build
       - name: Build Android project for Detox
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: yarn android:detox:build:release
         working-directory: apps/bare-expo
         timeout-minutes: 35
