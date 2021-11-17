@@ -1940,13 +1940,15 @@ PODS:
   - ExpoLinearGradient (10.0.1):
     - ExpoModulesCore
   - ExpoModulesCore (0.4.2):
+    - ExpoModulesCore/Default (= 0.4.2)
+    - ExpoModulesCore/React (= 0.4.2)
+  - ExpoModulesCore/Default (0.4.2)
+  - ExpoModulesCore/React (0.4.2):
     - React-Core
     - ReactCommon/turbomodule/core
   - ExpoModulesCore/Tests (0.4.2):
     - Nimble
     - Quick
-    - React-Core
-    - ReactCommon/turbomodule/core
   - ExpoSystemUI (1.0.0):
     - ExpoModulesCore
   - EXPrint (11.0.1):
@@ -4199,7 +4201,7 @@ SPEC CHECKSUMS:
   ExpoCellular: 90940614d45df5b31f281d70a63d92a06fe44af4
   ExpoHaptics: c0c014eabfdd1353a908f857f168b01fafd526db
   ExpoLinearGradient: 841746b0ef9c771d1f37fa5463f39eb25b6aae77
-  ExpoModulesCore: daacb24b99b77ec28c0cbc877a574b1f8e6709c9
+  ExpoModulesCore: ffd1adc8d47f35e5f379c70e4a37277a41ffcf21
   ExpoSystemUI: 3c969e3db290fcd5edb9c466d585f183d934b421
   EXPrint: a224501bbb89072567c58a5127f2d125b8776ea2
   EXRandom: 9ed4600d410cf2fe58d22b3121865624065a16e9

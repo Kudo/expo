@@ -69,6 +69,7 @@ export async function createSpecFromPodspecAsync(
 
   const bundleId = podNameToBundleId(podspec.name);
 
+  const excludeFiles = podspec.subspecs[0].exclude_files.filter((item) => item !== 'Prebuild/');
   return {
     name: podspec.name,
     targets: {
@@ -80,14 +81,14 @@ export async function createSpecFromPodspecAsync(
             path: '',
             name: podspec.name,
             createIntermediateGroups: true,
-            includes: arrayize(podspec.source_files),
+            includes: [...arrayize(podspec.subspecs[0].source_files)],
             excludes: [
               INFO_PLIST_FILENAME,
               `${podspec.name}.spec.json`,
               '*.xcodeproj',
               '*.xcframework',
               '*.podspec',
-              ...arrayize(podspec.exclude_files),
+              ...arrayize(excludeFiles),
             ],
             compilerFlags: podspec.compiler_flags,
           },
@@ -127,6 +128,7 @@ export async function createSpecFromPodspecAsync(
         IPHONEOS_DEPLOYMENT_TARGET: podspec.platforms.ios,
         FRAMEWORK_SEARCH_PATHS: constructFrameworkSearchPaths(dependencies),
         HEADER_SEARCH_PATHS: constructHeaderSearchPaths(dependenciesNames),
+        MODULEMAP_FILE: 'Prebuild/ExpoModulesCore.modulemap',
 
         // Suppresses deprecation warnings coming from frameworks like OpenGLES.
         VALIDATE_WORKSPACE_SKIPPED_SDK_FRAMEWORKS: arrayize(podspec.frameworks).join(' '),

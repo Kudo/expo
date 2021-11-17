@@ -2,6 +2,10 @@ require 'json'
 
 package = JSON.parse(File.read(File.join(__dir__, '..', 'package.json')))
 
+react_directories = ['JSI', 'ModuleRegistryAdapter', 'NativeModulesProxy', 'Services', 'ViewManagerAdapter']
+react_files = react_directories.map { |dir| dir + '/**/*.{h,m,mm,swift}'}
+react_files = react_files + ['Swift/Views/ViewModuleWrapper.swift', 'Swift/SwiftInteropBridge.swift', 'AppDelegates/EXAppDelegatesLoader.*']
+
 Pod::Spec.new do |s|
   s.name           = 'ExpoModulesCore'
   s.version        = package['version']
@@ -15,8 +19,8 @@ Pod::Spec.new do |s|
   s.source         = { git: 'https://github.com/expo/expo.git' }
   s.static_framework = true
   s.header_dir     = 'ExpoModulesCore'
+  s.default_subspec = 'Default', 'React'
 
-  # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {
     'USE_HEADERMAP' => 'YES',
     'DEFINES_MODULE' => 'YES',
@@ -24,18 +28,25 @@ Pod::Spec.new do |s|
     'SWIFT_COMPILATION_MODE' => 'wholemodule'
   }
 
-  s.dependency 'React-Core'
-  s.dependency 'ReactCommon/turbomodule/core'
+  s.subspec 'Default' do |ss|
+    if !$ExpoUseSources&.include?(package['name']) && ENV['EXPO_USE_SOURCE'].to_i == 0 && File.exist?("#{s.name}.xcframework") && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.10.0')
+      ss.source_files = '**/*.h'
+      ss.vendored_frameworks = "#{s.name}.xcframework"
+    else
+      ss.source_files = '**/*.{h,m,mm,swift}'
+    end
 
-  if !$ExpoUseSources&.include?(package['name']) && ENV['EXPO_USE_SOURCE'].to_i == 0 && File.exist?("#{s.name}.xcframework") && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.10.0')
-    s.source_files = '**/*.h'
-    s.vendored_frameworks = "#{s.name}.xcframework"
-  else
-    s.source_files = '**/*.{h,m,mm,swift}'
+    ss.exclude_files = react_files + ['Tests/', 'Prebuild/']
+    ss.private_header_files = '**/Swift.h'
   end
 
-  s.exclude_files = 'Tests/'
-  s.private_header_files = '**/Swift.h'
+  s.subspec 'React' do |ss|
+    ss.dependency 'React-Core'
+    ss.dependency 'ReactCommon/turbomodule/core'
+    ss.dependency 'ExpoModulesCore/Default'
+    ss.source_files = react_files
+    ss.exclude_files = 'Tests/', 'Prebuild/'
+  end
 
   s.test_spec 'Tests' do |test_spec|
     test_spec.dependency 'Quick'
