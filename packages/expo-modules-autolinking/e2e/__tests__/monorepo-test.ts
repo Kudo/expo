@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import { join } from 'path';
 import temporary from 'tempy';
+import { PRODUCTION_API_HOST } from '../../../../tools/src/Constants';
 
 import { GitDirectory } from '../../../../tools/src/Git';
 import { autolinkingRunAsync, yarnSync, combinations } from '../TestUtils';
@@ -54,7 +55,10 @@ describe('monorepo', () => {
       const parsedModules = modules.map((module) => ({
         ...module,
         sourceDir: removeProjectPath(module.sourceDir),
-        podspecDir: removeProjectPath(module.podspecDir),
+        pods: module.pods?.map((pod) => ({
+          ...pod,
+          podspecDir: removeProjectPath(pod.podspecDir),
+        })),
       }));
 
       expect(parsedModules).toMatchSnapshot();
