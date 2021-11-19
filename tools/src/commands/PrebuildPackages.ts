@@ -17,6 +17,7 @@ type ActionOptions = {
   removeArtifacts: boolean;
   cleanCache: boolean;
   generateSpecs: boolean;
+  xcodeProjectPath: string;
 };
 
 async function main(packageNames: string[], options: ActionOptions) {
@@ -43,11 +44,16 @@ async function main(packageNames: string[], options: ActionOptions) {
     logger.info(`📦 Prebuilding ${chalk.green(pkg.packageName)}`);
 
     const startTime = performance.now();
-    const xcodeProject = await generateXcodeProjectSpecAsync(pkg);
+    let xcodeProject: XcodeProject;
+    if (options.xcodeProjectPath) {
+      xcodeProject = await XcodeProject.fromXcodeprojPathAsync(options.xcodeProjectPath);
+    } else {
+      xcodeProject = await generateXcodeProjectSpecAsync(pkg);
+    }
 
     if (!options.generateSpecs) {
-      await buildFrameworksForProjectAsync(xcodeProject);
-      await cleanTemporaryFilesAsync(xcodeProject);
+      await buildFrameworksForProjectAsync(pkg, xcodeProject);
+      await cleanTemporaryFilesAsync(pkg, xcodeProject);
     }
 
     const endTime = performance.now();
@@ -64,5 +70,6 @@ export default (program: Command) => {
     .option('-r, --remove-artifacts', 'Removes `.xcframework` artifacts for given packages.', false)
     .option('-c, --clean-cache', 'Cleans the shared derived data folder before prebuilding.', false)
     .option('-g, --generate-specs', 'Only generates project specs', false)
+    .option('-p, --xcode-project-path [path]', 'Only generates project specs')
     .asyncAction(main);
 };
