@@ -214,6 +214,8 @@ PODS:
   - ExpoModulesCore (0.5.0):
     - React-Core
     - ReactCommon/turbomodule/core
+  - ExpoModulesCoreSwift (0.5.0):
+    - ExpoModulesCore
   - ExpoSystemUI (1.0.0):
     - ExpoModulesCore
   - EXPrint (11.0.1):
@@ -807,6 +809,7 @@ DEPENDENCIES:
   - ExpoHaptics (from `../../../packages/expo-haptics/ios`)
   - ExpoLinearGradient (from `../../../packages/expo-linear-gradient/ios`)
   - ExpoModulesCore (from `../../../packages/expo-modules-core/ios`)
+  - ExpoModulesCoreSwift (from `../../../packages/expo-modules-core/ios`)
   - ExpoSystemUI (from `../../../packages/expo-system-ui/ios`)
   - EXPrint (from `../../../packages/expo-print/ios`)
   - EXRandom (from `../../../packages/expo-random/ios`)
@@ -1069,6 +1072,9 @@ EXTERNAL SOURCES:
   ExpoModulesCore:
     inhibit_warnings: false
     :path: "../../../packages/expo-modules-core/ios"
+  ExpoModulesCoreSwift:
+    inhibit_warnings: false
+    :path: "../../../packages/expo-modules-core/ios"
   ExpoSystemUI:
     inhibit_warnings: false
     :path: "../../../packages/expo-system-ui/ios"
@@ -1285,7 +1291,8 @@ SPEC CHECKSUMS:
   ExpoCellular: 90940614d45df5b31f281d70a63d92a06fe44af4
   ExpoHaptics: c0c014eabfdd1353a908f857f168b01fafd526db
   ExpoLinearGradient: 841746b0ef9c771d1f37fa5463f39eb25b6aae77
-  ExpoModulesCore: 3339f23adf96e5b39e6315d5f32b4585ecd4cd43
+  ExpoModulesCore: 79cf09506a7a29c7dd13330e1b9498ac06b5c127
+  ExpoModulesCoreSwift: c07cf0ce03fbe1f8007bfb3ea4a4adfe76ef5880
   ExpoSystemUI: 3c969e3db290fcd5edb9c466d585f183d934b421
   EXPrint: a224501bbb89072567c58a5127f2d125b8776ea2
   EXRandom: 9ed4600d410cf2fe58d22b3121865624065a16e9

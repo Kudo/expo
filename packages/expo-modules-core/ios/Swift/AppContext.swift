@@ -1,4 +1,6 @@
 import UIKit
+import ExpoModulesCore
+
 /**
  The app context is an interface to a single Expo app.
  */
