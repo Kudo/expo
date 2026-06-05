@@ -15,6 +15,7 @@ type ActionOptions = {
   repo?: string;
   pullNumber?: string;
   headSha?: string;
+  controlRepo?: string;
   controlIssue?: string;
   workflowFile?: string;
   workflowRef?: string;
@@ -61,6 +62,7 @@ async function action(actionName: string | undefined, options: ActionOptions) {
           repo: options.repo,
           pullNumber: options.pullNumber,
           headSha: options.headSha,
+          controlRepo: options.controlRepo,
           controlIssue: options.controlIssue,
           workflowFile: options.workflowFile,
           workflowRef: options.workflowRef,
@@ -72,6 +74,7 @@ async function action(actionName: string | undefined, options: ActionOptions) {
     case 'run_command': {
       const command = await postGitHubSandboxCommandAsync({
         controlIssue: requireOption(options.controlIssue, '--control-issue'),
+        controlRepo: options.controlRepo,
         sessionId: requireOption(options.sessionId, '--session-id'),
         command: requireOption(options.command, '--command'),
         cwd: options.cwd,
@@ -86,6 +89,7 @@ async function action(actionName: string | undefined, options: ActionOptions) {
       await writeResultAsync(
         await waitForGitHubSandboxCommandResultAsync({
           controlIssue: requireOption(options.controlIssue, '--control-issue'),
+          controlRepo: options.controlRepo,
           sessionId: command.sessionId,
           commandId: command.commandId,
           resultTimeoutMs: options.resultTimeout
@@ -101,6 +105,7 @@ async function action(actionName: string | undefined, options: ActionOptions) {
       await writeResultAsync(
         await listGitHubSandboxLogEntriesAsync({
           controlIssue: requireOption(options.controlIssue, '--control-issue'),
+          controlRepo: options.controlRepo,
           sessionId: requireOption(options.sessionId, '--session-id'),
         }),
         options.output
@@ -110,6 +115,7 @@ async function action(actionName: string | undefined, options: ActionOptions) {
       await writeResultAsync(
         await destroyGitHubSandboxSessionAsync({
           controlIssue: requireOption(options.controlIssue, '--control-issue'),
+          controlRepo: options.controlRepo,
           sessionId: requireOption(options.sessionId, '--session-id'),
         }),
         options.output
@@ -128,7 +134,11 @@ export default (program: Command) => {
     .option('--repo <owner/name>', 'GitHub repository in owner/name format for create_session.')
     .option('--pull-number <number>', 'Pull request number for create_session.')
     .option('--head-sha <sha>', 'Exact PR head commit SHA for create_session.')
-    .option('--control-issue <number>', 'expo/expo issue or PR number used as the command queue.')
+    .option(
+      '--control-repo <owner/name>',
+      'Repository containing the command queue issue or PR. Defaults to expo/expo.'
+    )
+    .option('--control-issue <number>', 'Issue or PR number used as the command queue.')
     .option('--workflow-file <file>', 'Workflow filename. Defaults to pr-sandbox-session.yml.')
     .option('--workflow-ref <ref>', 'Branch or tag containing the workflow. Defaults to main.')
     .option('--idle-timeout <seconds>', 'Seconds before an idle session exits. Defaults to 1800.')

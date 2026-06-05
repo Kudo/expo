@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildGitHubSandboxComment,
   normalizeGitHubSandboxCommandRequest,
+  normalizeGitHubSandboxControlRepo,
   normalizeGitHubSandboxNetwork,
   parseGitHubSandboxComment,
   parseGitHubSandboxComments,
@@ -92,6 +93,15 @@ describe('GitHub Actions sandbox session', () => {
       }
     );
     assert.equal(normalizeGitHubSandboxNetwork(undefined), 'none');
+  });
+
+  it('should normalize control repos for fork sessions', () => {
+    assert.deepEqual(normalizeGitHubSandboxControlRepo('Kudo/expo'), {
+      owner: 'Kudo',
+      name: 'expo',
+      repo: 'Kudo/expo',
+    });
+    assert.equal(normalizeGitHubSandboxControlRepo(undefined).repo, 'expo/expo');
   });
 
   it('should reject invalid command requests', () => {

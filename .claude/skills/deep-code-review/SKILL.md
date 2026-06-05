@@ -139,6 +139,7 @@ et pr-sandbox destroy_job \
 ```bash
 et pr-sandbox-gh create_session \
   --pr-url <PR_URL> \
+  --control-repo expo/expo \
   --control-issue {pull_number} \
   --workflow-ref <branch-containing-pr-sandbox-session.yml> \
   --output "$OUTPUT_DIR/pr-{pull_number}-gh-sandbox-session.json"
@@ -147,26 +148,30 @@ SESSION_ID="$(node -e "console.log(require(process.argv[1]).sessionId)" "$OUTPUT
 
 et pr-sandbox-gh run_command \
   --session-id "$SESSION_ID" \
+  --control-repo expo/expo \
   --control-issue {pull_number} \
   --command "node -e \"console.log(require('./package.json').name)\""
 
 et pr-sandbox-gh run_command \
   --session-id "$SESSION_ID" \
+  --control-repo expo/expo \
   --control-issue {pull_number} \
   --command "pnpm lint" \
   --timeout 1800000
 
 et pr-sandbox-gh get_logs \
   --session-id "$SESSION_ID" \
+  --control-repo expo/expo \
   --control-issue {pull_number} \
   --output "$OUTPUT_DIR/pr-{pull_number}-gh-sandbox-logs.json"
 
 et pr-sandbox-gh destroy_session \
   --session-id "$SESSION_ID" \
+  --control-repo expo/expo \
   --control-issue {pull_number}
 ```
 
-Commands default to `--network none`; add `--network bridge` only when a command must fetch dependencies. Keep the session alive for iterative checks such as lint, focused package tests, and `node -e` reproducers. Destroy the session when review evidence collection is complete.
+Use a fork such as `Kudo/expo` as `--control-repo` when testing the workflow before it lands in upstream `expo/expo`; in that case, `--control-issue` must be an existing issue or PR number in the fork. Commands default to `--network none`; add `--network bridge` only when a command must fetch dependencies. Keep the session alive for iterative checks such as lint, focused package tests, and `node -e` reproducers. Destroy the session when review evidence collection is complete.
 
 **Stacked PRs:** Treat each PR as a separate sandbox job pinned to that PR's `headRefOid`. Only run sandbox commands for the PR(s) whose changes need execution evidence. When findings depend on aggregate stack behavior, make clear which PR's sandbox evidence was used.
 

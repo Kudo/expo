@@ -1,11 +1,16 @@
+import { Octokit, RestEndpointMethodTypes } from '@octokit/rest';
 import { randomUUID } from 'crypto';
 
-import { createCommentAsync, getAuthenticatedUserAsync, listAllCommentsAsync } from '../GitHub';
-import { dispatchWorkflowEventAsync } from '../GitHubActions';
 import { fetchPublicPullRequestRefAsync } from './github';
 import type { PullRequestRef } from './types';
-import { normalizeHeadSha, normalizePullRequestRef, normalizeSandboxCwd } from './validation';
+import {
+  normalizeHeadSha,
+  normalizePullRequestRef,
+  normalizeRepo,
+  normalizeSandboxCwd,
+} from './validation';
 
+export const DEFAULT_GITHUB_SANDBOX_CONTROL_REPO = 'expo/expo';
 export const DEFAULT_GITHUB_SANDBOX_WORKFLOW_FILE = 'pr-sandbox-session.yml';
 export const DEFAULT_GITHUB_SANDBOX_WORKFLOW_REF = 'main';
 export const DEFAULT_GITHUB_SANDBOX_IMAGE = 'node:22-bookworm';
@@ -20,6 +25,11 @@ const MAX_COMMAND_TIMEOUT_MS = 3_600_000;
 const DEFAULT_IDLE_TIMEOUT_SECONDS = 1_800;
 const DEFAULT_RESULT_TIMEOUT_GRACE_MS = 600_000;
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
+const GITHUB_API_VERSION = '2026-03-10';
+
+const octokit = new Octokit({
+  auth: process.env.GITHUB_TOKEN,
+});
 
 export type GitHubSandboxNetwork = 'none' | 'bridge';
 
@@ -29,6 +39,7 @@ export type GitHubSandboxSession = {
   repo: string;
   pullNumber: number;
   headSha: string;
+  controlRepo: string;
   controlIssue: number;
   workflowFile: string;
   workflowRef: string;
@@ -80,7 +91,16 @@ export type GitHubSandboxCommentEntry = {
   authorLogin?: string;
 };
 
-type GitHubIssueComment = Awaited<ReturnType<typeof listAllCommentsAsync>>[number];
+type GitHubIssueComment =
+  RestEndpointMethodTypes['issues']['listComments']['response']['data'][number];
+
+type GitHubRepo = {
+  owner: string;
+  name: string;
+  repo: string;
+};
+
+type WorkflowDispatchEventInputs = Record<string, string>;
 
 function delayAsync(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -102,6 +122,71 @@ function normalizePositiveInteger(
     throw new Error(`${name} must be a positive integer.`);
   }
   return normalized;
+}
+
+function getApiHeaders() {
+  return {
+    'X-GitHub-Api-Version': GITHUB_API_VERSION,
+  };
+}
+
+export function normalizeGitHubSandboxControlRepo(repo: string | undefined): GitHubRepo {
+  return normalizeRepo(repo ?? DEFAULT_GITHUB_SANDBOX_CONTROL_REPO);
+}
+
+async function getAuthenticatedUserLoginAsync(): Promise<string> {
+  const { data } = await octokit.users.getAuthenticated({
+    headers: getApiHeaders(),
+  });
+  return data.login;
+}
+
+async function dispatchWorkflowEventAsync(
+  repo: GitHubRepo,
+  workflowId: string,
+  ref: string,
+  inputs: WorkflowDispatchEventInputs
+): Promise<void> {
+  await octokit.actions.createWorkflowDispatch({
+    owner: repo.owner,
+    repo: repo.name,
+    workflow_id: workflowId,
+    ref,
+    inputs,
+    headers: getApiHeaders(),
+  });
+}
+
+async function createIssueCommentAsync(repo: GitHubRepo, issueNumber: number, body: string) {
+  const { data } = await octokit.issues.createComment({
+    owner: repo.owner,
+    repo: repo.name,
+    issue_number: issueNumber,
+    body,
+    headers: getApiHeaders(),
+  });
+  return data;
+}
+
+async function listAllIssueCommentsAsync(
+  repo: GitHubRepo,
+  issueNumber: number
+): Promise<GitHubIssueComment[]> {
+  const comments: GitHubIssueComment[] = [];
+  for (let page = 1; ; page++) {
+    const { data } = await octokit.issues.listComments({
+      owner: repo.owner,
+      repo: repo.name,
+      issue_number: issueNumber,
+      per_page: 100,
+      page,
+      headers: getApiHeaders(),
+    });
+    comments.push(...data);
+    if (data.length < 100) {
+      return comments;
+    }
+  }
 }
 
 export function normalizeGitHubSandboxSessionId(sessionId: string): string {
@@ -257,11 +342,13 @@ export async function createGitHubSandboxSessionAsync(options: {
   pullNumber?: string | number;
   headSha?: string;
   controlIssue?: string | number;
+  controlRepo?: string;
   workflowFile?: string;
   workflowRef?: string;
   idleTimeoutSeconds?: string | number;
 }): Promise<GitHubSandboxSession> {
   const ref = await resolveGitHubSandboxPullRequestRefAsync(options);
+  const controlRepo = normalizeGitHubSandboxControlRepo(options.controlRepo);
   const controlIssue = normalizePositiveInteger(options.controlIssue, '--control-issue');
   const workflowFile = options.workflowFile ?? DEFAULT_GITHUB_SANDBOX_WORKFLOW_FILE;
   const workflowRef = options.workflowRef ?? DEFAULT_GITHUB_SANDBOX_WORKFLOW_REF;
@@ -270,7 +357,7 @@ export async function createGitHubSandboxSessionAsync(options: {
     '--idle-timeout',
     DEFAULT_IDLE_TIMEOUT_SECONDS
   );
-  const controllerLogin = (await getAuthenticatedUserAsync()).login;
+  const controllerLogin = await getAuthenticatedUserLoginAsync();
   const sessionId = createGitHubSandboxSessionId(ref);
   const session: GitHubSandboxSession = {
     provider: 'github_actions',
@@ -278,6 +365,7 @@ export async function createGitHubSandboxSessionAsync(options: {
     repo: ref.repo,
     pullNumber: ref.pullNumber,
     headSha: ref.headSha,
+    controlRepo: controlRepo.repo,
     controlIssue,
     workflowFile,
     workflowRef,
@@ -286,7 +374,7 @@ export async function createGitHubSandboxSessionAsync(options: {
     createdAt: new Date().toISOString(),
   };
 
-  await dispatchWorkflowEventAsync(workflowFile, workflowRef, {
+  await dispatchWorkflowEventAsync(controlRepo, workflowFile, workflowRef, {
     session_id: sessionId,
     repo: ref.repo,
     pull_number: String(ref.pullNumber),
@@ -295,13 +383,18 @@ export async function createGitHubSandboxSessionAsync(options: {
     idle_timeout_seconds: String(idleTimeoutSeconds),
     controller_login: controllerLogin,
   });
-  await createCommentAsync(controlIssue, buildGitHubSandboxComment('session', sessionId, session));
+  await createIssueCommentAsync(
+    controlRepo,
+    controlIssue,
+    buildGitHubSandboxComment('session', sessionId, session)
+  );
 
   return session;
 }
 
 export async function postGitHubSandboxCommandAsync(options: {
   controlIssue: string | number;
+  controlRepo?: string;
   sessionId: string;
   command?: string;
   cwd?: string;
@@ -309,6 +402,7 @@ export async function postGitHubSandboxCommandAsync(options: {
   network?: string;
   image?: string;
 }): Promise<GitHubSandboxCommand> {
+  const controlRepo = normalizeGitHubSandboxControlRepo(options.controlRepo);
   const controlIssue = normalizePositiveInteger(options.controlIssue, '--control-issue');
   const sessionId = normalizeGitHubSandboxSessionId(options.sessionId);
   const request = normalizeGitHubSandboxCommandRequest(options);
@@ -319,7 +413,8 @@ export async function postGitHubSandboxCommandAsync(options: {
     commandId,
     createdAt: new Date().toISOString(),
   };
-  await createCommentAsync(
+  await createIssueCommentAsync(
+    controlRepo,
     controlIssue,
     buildGitHubSandboxComment('command', sessionId, command, commandId)
   );
@@ -328,11 +423,13 @@ export async function postGitHubSandboxCommandAsync(options: {
 
 export async function waitForGitHubSandboxCommandResultAsync(options: {
   controlIssue: string | number;
+  controlRepo?: string;
   sessionId: string;
   commandId: string;
   resultTimeoutMs?: string | number;
   pollIntervalMs?: string | number;
 }): Promise<GitHubSandboxCommandResult> {
+  const controlRepo = normalizeGitHubSandboxControlRepo(options.controlRepo);
   const controlIssue = normalizePositiveInteger(options.controlIssue, '--control-issue');
   const sessionId = normalizeGitHubSandboxSessionId(options.sessionId);
   const resultTimeoutMs = normalizePositiveInteger(
@@ -348,7 +445,10 @@ export async function waitForGitHubSandboxCommandResultAsync(options: {
   const deadline = Date.now() + resultTimeoutMs;
 
   while (Date.now() <= deadline) {
-    const entries = parseGitHubSandboxComments(await listAllCommentsAsync(controlIssue), sessionId);
+    const entries = parseGitHubSandboxComments(
+      await listAllIssueCommentsAsync(controlRepo, controlIssue),
+      sessionId
+    );
     const result = entries.find(
       (entry) => entry.kind === 'result' && entry.commandId === options.commandId
     );
@@ -365,25 +465,33 @@ export async function waitForGitHubSandboxCommandResultAsync(options: {
 
 export async function listGitHubSandboxLogEntriesAsync(options: {
   controlIssue: string | number;
+  controlRepo?: string;
   sessionId: string;
 }): Promise<GitHubSandboxCommentEntry[]> {
+  const controlRepo = normalizeGitHubSandboxControlRepo(options.controlRepo);
   const controlIssue = normalizePositiveInteger(options.controlIssue, '--control-issue');
   return parseGitHubSandboxComments(
-    await listAllCommentsAsync(controlIssue),
+    await listAllIssueCommentsAsync(controlRepo, controlIssue),
     normalizeGitHubSandboxSessionId(options.sessionId)
   );
 }
 
 export async function destroyGitHubSandboxSessionAsync(options: {
   controlIssue: string | number;
+  controlRepo?: string;
   sessionId: string;
 }): Promise<GitHubSandboxDestroyRequest> {
+  const controlRepo = normalizeGitHubSandboxControlRepo(options.controlRepo);
   const controlIssue = normalizePositiveInteger(options.controlIssue, '--control-issue');
   const sessionId = normalizeGitHubSandboxSessionId(options.sessionId);
   const request: GitHubSandboxDestroyRequest = {
     sessionId,
     requestedAt: new Date().toISOString(),
   };
-  await createCommentAsync(controlIssue, buildGitHubSandboxComment('destroy', sessionId, request));
+  await createIssueCommentAsync(
+    controlRepo,
+    controlIssue,
+    buildGitHubSandboxComment('destroy', sessionId, request)
+  );
   return request;
 }

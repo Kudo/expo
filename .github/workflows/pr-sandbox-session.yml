@@ -16,7 +16,7 @@ on:
         description: 'Exact PR head commit SHA'
         required: true
       control_issue:
-        description: 'expo/expo issue or PR number used as the command queue'
+        description: 'Issue or PR number in this repository used as the command queue'
         required: true
       idle_timeout_seconds:
         description: 'Seconds before the session exits when idle'
@@ -36,7 +36,6 @@ concurrency:
 
 jobs:
   sandbox_session:
-    if: github.repository == 'expo/expo'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:

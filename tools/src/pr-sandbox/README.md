@@ -73,8 +73,9 @@ runner, then polls a GitHub issue or PR comment thread for commands. Each comman
 the PR checkout mounted at `/workspace/repo`; the workflow token stays on the runner side and is not
 passed into Docker.
 
-The control issue should be an `expo/expo` issue or PR number. The workflow only accepts command and
-destroy comments authored by the GitHub login that created the session.
+The control issue should be an issue or PR number in the repository that runs the workflow. The
+workflow only accepts command and destroy comments authored by the GitHub login that created the
+session.
 
 ```sh
 export GITHUB_TOKEN=...
@@ -121,6 +122,26 @@ et pr-sandbox-gh destroy_session \
 Commands default to `--network none`. Use `--network bridge` only when the command needs external
 network access, such as dependency installation. Use `--queue-only` when you want to enqueue a long
 command and come back later with `get_logs`.
+
+To test from a fork, first make sure `.github/workflows/pr-sandbox-session.yml` exists on the fork's
+default branch, then use any existing issue or PR in that fork as the command queue:
+
+```sh
+gh issue create \
+  --repo Kudo/expo \
+  --title "PR sandbox test" \
+  --body "Temporary command queue for PR sandbox testing."
+
+et pr-sandbox-gh create_session \
+  --pr-url https://github.com/expo/expo/pull/44135 \
+  --control-repo Kudo/expo \
+  --control-issue <kudo-expo-issue-number> \
+  --workflow-ref <branch-or-default-ref-containing-session-script> \
+  --output /tmp/pr-44135-gh-sandbox-session.json
+```
+
+The workflow will run in `Kudo/expo`, fetch the target PR from `expo/expo`, and write command/result
+comments only to the fork control issue.
 
 ## Verification
 
