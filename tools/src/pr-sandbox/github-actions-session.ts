@@ -94,7 +94,7 @@ export type GitHubSandboxCommentEntry = {
 type GitHubIssueComment =
   RestEndpointMethodTypes['issues']['listComments']['response']['data'][number];
 
-type GitHubRepo = {
+export type GitHubRepo = {
   owner: string;
   name: string;
   repo: string;
@@ -134,14 +134,14 @@ export function normalizeGitHubSandboxControlRepo(repo: string | undefined): Git
   return normalizeRepo(repo ?? DEFAULT_GITHUB_SANDBOX_CONTROL_REPO);
 }
 
-async function getAuthenticatedUserLoginAsync(): Promise<string> {
+export async function getAuthenticatedUserLoginAsync(): Promise<string> {
   const { data } = await octokit.users.getAuthenticated({
     headers: getApiHeaders(),
   });
   return data.login;
 }
 
-async function dispatchWorkflowEventAsync(
+export async function dispatchGitHubSandboxWorkflowAsync(
   repo: GitHubRepo,
   workflowId: string,
   ref: string,
@@ -374,7 +374,7 @@ export async function createGitHubSandboxSessionAsync(options: {
     createdAt: new Date().toISOString(),
   };
 
-  await dispatchWorkflowEventAsync(controlRepo, workflowFile, workflowRef, {
+  await dispatchGitHubSandboxWorkflowAsync(controlRepo, workflowFile, workflowRef, {
     session_id: sessionId,
     repo: ref.repo,
     pull_number: String(ref.pullNumber),

@@ -15,6 +15,7 @@ const MAX_COMMAND_TIMEOUT_MS = 3600000;
 const DEFAULT_IMAGE = 'node:22-bookworm';
 const MAX_OUTPUT_CHARS = 12000;
 const POLL_INTERVAL_MS = 5000;
+const TUNNEL_POLL_TIMEOUT_MS = 25000;
 
 function requiredEnv(name) {
   const value = process.env[name];
@@ -281,24 +282,122 @@ async function runDockerCommandAsync(request, repoDir) {
   });
 }
 
-async function mainAsync() {
-  const sessionId = requiredEnv('PR_SANDBOX_SESSION_ID');
-  if (!SESSION_ID_PATTERN.test(sessionId)) {
-    throw new Error('Invalid PR_SANDBOX_SESSION_ID.');
+async function tunnelRequestAsync(sessionUrl, token, pathSuffix, options = {}) {
+  const url = new URL(`${sessionUrl.replace(/\/+$/, '')}${pathSuffix}`);
+  const response = await fetch(url, {
+    method: options.method ?? 'GET',
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: options.body == null ? undefined : JSON.stringify(options.body),
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    throw new Error(
+      `Tunnel request failed: ${response.status} ${response.statusText} ${JSON.stringify(data)}`
+    );
   }
+  return data;
+}
+
+async function runTunnelSessionAsync({ sessionId, repoDir, idleTimeoutMs }) {
+  const sessionUrl = requiredEnv('PR_SANDBOX_TUNNEL_URL');
+  const token = requiredEnv('PR_SANDBOX_TUNNEL_TOKEN');
+  const startedAt = new Date().toISOString();
+
+  await tunnelRequestAsync(sessionUrl, token, '/runner/hello', {
+    method: 'POST',
+    body: {
+      sessionId,
+      status: 'ready',
+      repoDir: '/workspace/repo',
+      startedAt,
+    },
+  });
+
+  let lastActivityAt = Date.now();
+  while (true) {
+    if (Date.now() - lastActivityAt > idleTimeoutMs) {
+      await tunnelRequestAsync(sessionUrl, token, '/runner/idle-timeout', {
+        method: 'POST',
+        body: {
+          sessionId,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    const next = await tunnelRequestAsync(
+      sessionUrl,
+      token,
+      `/commands/next?timeout=${TUNNEL_POLL_TIMEOUT_MS}`
+    );
+    if (next.type === 'none') {
+      continue;
+    }
+    if (next.type === 'destroy') {
+      await tunnelRequestAsync(sessionUrl, token, '/runner/destroyed', {
+        method: 'POST',
+        body: {
+          sessionId,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+    if (next.type !== 'command' || !next.commandId) {
+      throw new Error(`Unexpected tunnel command payload: ${JSON.stringify(next)}`);
+    }
+
+    let result;
+    try {
+      const request = normalizeCommandPayload(next.request, repoDir);
+      const execution = await runDockerCommandAsync(request, repoDir);
+      result = {
+        sessionId,
+        commandId: next.commandId,
+        command: request.command,
+        cwd: request.cwd,
+        timeout: request.timeout,
+        network: request.network,
+        image: request.image,
+        ...execution,
+      };
+    } catch (error) {
+      result = {
+        sessionId,
+        commandId: next.commandId,
+        command: next.request?.command ?? '',
+        cwd: next.request?.cwd ?? '.',
+        timeout: next.request?.timeout ?? DEFAULT_COMMAND_TIMEOUT_MS,
+        network: next.request?.network ?? 'none',
+        image: next.request?.image ?? DEFAULT_IMAGE,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        finishedAt: new Date().toISOString(),
+      };
+    }
+
+    await tunnelRequestAsync(sessionUrl, token, `/results/${encodeURIComponent(next.commandId)}`, {
+      method: 'POST',
+      body: result,
+    });
+    lastActivityAt = Date.now();
+  }
+}
+
+async function runCommentSessionAsync({ sessionId, repoDir, idleTimeoutMs, controllerLogin }) {
   const [controlOwner, controlRepo] = requiredEnv('GITHUB_REPOSITORY').split('/');
   const controlIssue = parsePositiveInteger(
     requiredEnv('PR_SANDBOX_CONTROL_ISSUE'),
     'PR_SANDBOX_CONTROL_ISSUE'
   );
-  const idleTimeoutMs =
-    parsePositiveInteger(
-      requiredEnv('PR_SANDBOX_IDLE_TIMEOUT_SECONDS'),
-      'PR_SANDBOX_IDLE_TIMEOUT_SECONDS'
-    ) * 1000;
-  const controllerLogin = requiredEnv('PR_SANDBOX_CONTROLLER_LOGIN');
-  const repoDir = path.resolve(requiredEnv('PR_SANDBOX_REPO_DIR'));
-
   let lastActivityAt = Date.now();
   const startedAt = new Date().toISOString();
 
@@ -406,6 +505,31 @@ async function mainAsync() {
 
     await delayAsync(POLL_INTERVAL_MS);
   }
+}
+
+async function mainAsync() {
+  const sessionId = requiredEnv('PR_SANDBOX_SESSION_ID');
+  if (!SESSION_ID_PATTERN.test(sessionId)) {
+    throw new Error('Invalid PR_SANDBOX_SESSION_ID.');
+  }
+  const idleTimeoutMs =
+    parsePositiveInteger(
+      requiredEnv('PR_SANDBOX_IDLE_TIMEOUT_SECONDS'),
+      'PR_SANDBOX_IDLE_TIMEOUT_SECONDS'
+    ) * 1000;
+  const controllerLogin = requiredEnv('PR_SANDBOX_CONTROLLER_LOGIN');
+  const repoDir = path.resolve(requiredEnv('PR_SANDBOX_REPO_DIR'));
+  const transport = process.env.PR_SANDBOX_TRANSPORT || 'tunnel';
+
+  if (transport === 'tunnel') {
+    await runTunnelSessionAsync({ sessionId, repoDir, idleTimeoutMs });
+    return;
+  }
+  if (transport === 'comments') {
+    await runCommentSessionAsync({ sessionId, repoDir, idleTimeoutMs, controllerLogin });
+    return;
+  }
+  throw new Error(`Unsupported PR_SANDBOX_TRANSPORT: ${transport}`);
 }
 
 mainAsync().catch((error) => {

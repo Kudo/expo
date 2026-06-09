@@ -17,7 +17,7 @@ on:
         required: true
       control_issue:
         description: 'Issue or PR number in this repository used as the command queue'
-        required: true
+        required: false
       idle_timeout_seconds:
         description: 'Seconds before the session exits when idle'
         required: false
@@ -25,6 +25,16 @@ on:
       controller_login:
         description: 'GitHub login allowed to enqueue commands'
         required: true
+      transport:
+        description: 'Command transport: tunnel or comments'
+        required: false
+        default: 'tunnel'
+      tunnel_url:
+        description: 'Runner-initiated command tunnel session URL'
+        required: false
+      tunnel_token:
+        description: 'One-time token for the command tunnel'
+        required: false
 
 permissions:
   contents: read
@@ -93,4 +103,7 @@ jobs:
           PR_SANDBOX_IDLE_TIMEOUT_SECONDS: ${{ inputs.idle_timeout_seconds }}
           PR_SANDBOX_CONTROLLER_LOGIN: ${{ inputs.controller_login }}
           PR_SANDBOX_REPO_DIR: ${{ github.workspace }}/repo
+          PR_SANDBOX_TRANSPORT: ${{ inputs.transport }}
+          PR_SANDBOX_TUNNEL_URL: ${{ inputs.tunnel_url }}
+          PR_SANDBOX_TUNNEL_TOKEN: ${{ inputs.tunnel_token }}
         run: node "$GITHUB_WORKSPACE/controller/.github/scripts/pr-sandbox-session.js"

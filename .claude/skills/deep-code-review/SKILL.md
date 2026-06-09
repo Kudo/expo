@@ -62,10 +62,10 @@ For PR URL reviews, use the PR sandbox when execution would materially improve r
 
 **Prerequisites:** Sandbox-backed execution uses one of two controller backends:
 
-- GitHub Actions session backend: `GITHUB_TOKEN` with permission to dispatch workflows and comment on `expo/expo` issues or PRs. This is the maintained in-repo backend.
+- GitHub Actions tunnel backend: `GITHUB_TOKEN` with permission to dispatch workflows in the workflow repository, plus a local HTTPS tunnel such as `cloudflared` or `ngrok`. This is the maintained in-repo backend.
 - Legacy Cloudflare Worker backend: `PR_SANDBOX_WORKER_URL`, `PR_SANDBOX_AUTH_TOKEN`, and an externally deployed compatible Worker. This repository does not contain the Worker source.
 
-Use the GitHub Actions session backend by default. Use the legacy Worker backend only when the environment already provides a compatible deployed Worker. If neither backend is available, continue with a static review and mention that sandbox execution was not available. Do not block the review solely because the sandbox is unavailable.
+Use the GitHub Actions tunnel backend by default. Use the legacy Worker backend only when the environment already provides a compatible deployed Worker. If neither backend is available, continue with a static review and mention that sandbox execution was not available. Do not block the review solely because the sandbox is unavailable.
 
 **Resolve the review output directory early** when using sandbox evidence, so evidence files live beside the review JSON:
 
@@ -134,44 +134,42 @@ et pr-sandbox destroy_job \
   --auth-token "$PR_SANDBOX_AUTH_TOKEN"
 ```
 
-**GitHub Actions session flow:** Start a GitHub Actions session for normal sandbox-backed review. The workflow checks out the exact PR head once, then waits for command comments. Commands run in Docker with `/workspace/repo` mounted and no GitHub token in the container.
+**GitHub Actions tunnel flow:** Start a local tunnel controller for normal sandbox-backed review. The workflow checks out the exact PR head once, then connects back to the local controller through the public tunnel URL. Commands run in Docker with `/workspace/repo` mounted and no GitHub token in the container. Keep the `serve_tunnel` process running until review evidence collection is complete.
 
 ```bash
-et pr-sandbox-gh create_session \
+# Start a public tunnel separately, for example:
+# cloudflared tunnel --url http://127.0.0.1:8765
+
+et pr-sandbox-gh serve_tunnel \
   --pr-url <PR_URL> \
   --control-repo expo/expo \
-  --control-issue {pull_number} \
   --workflow-ref <branch-containing-pr-sandbox-session.yml> \
+  --public-url <public-tunnel-url> \
   --output "$OUTPUT_DIR/pr-{pull_number}-gh-sandbox-session.json"
 
 SESSION_ID="$(node -e "console.log(require(process.argv[1]).sessionId)" "$OUTPUT_DIR/pr-{pull_number}-gh-sandbox-session.json")"
+TUNNEL_TOKEN="$(node -e "console.log(require(process.argv[1]).tunnelToken)" "$OUTPUT_DIR/pr-{pull_number}-gh-sandbox-session.json")"
 
-et pr-sandbox-gh run_command \
+et pr-sandbox-gh run_tunnel_command \
   --session-id "$SESSION_ID" \
-  --control-repo expo/expo \
-  --control-issue {pull_number} \
-  --command "node -e \"console.log(require('./package.json').name)\""
+  --local-server-url http://127.0.0.1:8765 \
+  --tunnel-token "$TUNNEL_TOKEN" \
+  --command "git config --global --add safe.directory /workspace/repo && node -e \"console.log(require('./package.json').name)\""
 
-et pr-sandbox-gh run_command \
+et pr-sandbox-gh run_tunnel_command \
   --session-id "$SESSION_ID" \
-  --control-repo expo/expo \
-  --control-issue {pull_number} \
+  --local-server-url http://127.0.0.1:8765 \
+  --tunnel-token "$TUNNEL_TOKEN" \
   --command "pnpm lint" \
   --timeout 1800000
 
-et pr-sandbox-gh get_logs \
+et pr-sandbox-gh destroy_tunnel_session \
   --session-id "$SESSION_ID" \
-  --control-repo expo/expo \
-  --control-issue {pull_number} \
-  --output "$OUTPUT_DIR/pr-{pull_number}-gh-sandbox-logs.json"
-
-et pr-sandbox-gh destroy_session \
-  --session-id "$SESSION_ID" \
-  --control-repo expo/expo \
-  --control-issue {pull_number}
+  --local-server-url http://127.0.0.1:8765 \
+  --tunnel-token "$TUNNEL_TOKEN"
 ```
 
-Use a fork such as `Kudo/expo` as `--control-repo` when testing the workflow before it lands in upstream `expo/expo`; in that case, `--control-issue` must be an existing issue or PR number in the fork. Commands default to `--network none`; add `--network bridge` only when a command must fetch dependencies. Keep the session alive for iterative checks such as lint, focused package tests, and `node -e` reproducers. Destroy the session when review evidence collection is complete.
+Use a fork such as `Kudo/expo` as `--control-repo` when testing the workflow before it lands in upstream `expo/expo`. Commands default to `--network none`; add `--network bridge` only when a command must fetch dependencies. Keep commands narrowly scoped to review evidence. The tunnel token is a secret for that session; do not paste it into PR comments, review output, or logs.
 
 **Stacked PRs:** Treat each PR as a separate sandbox job pinned to that PR's `headRefOid`. Only run sandbox commands for the PR(s) whose changes need execution evidence. When findings depend on aggregate stack behavior, make clear which PR's sandbox evidence was used.
 
